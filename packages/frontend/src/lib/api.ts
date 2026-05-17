@@ -1903,7 +1903,7 @@ export const api = {
             Object.entries(pVal.models).forEach(([mKey, mVal]: [string, any]) => {
               models.push({
                 id: mKey,
-                name: mKey,
+                name: mVal.display_name || mKey,
                 providerId: pKey,
                 pricingSource: mVal.pricing?.source,
                 type: mVal.type,

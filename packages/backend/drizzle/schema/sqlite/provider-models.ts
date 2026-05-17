@@ -15,6 +15,7 @@ export const providerModels = sqliteTable(
     extraBody: text('extra_body'), // JSON: Record<string, any>
     adapter: text('adapter'), // JSON: string[] — model-level adapter names
     maxConcurrency: integer('max_concurrency'), // Max concurrent requests for this model (NULL = no limit)
+    displayName: text('display_name'),
     sortOrder: integer('sort_order').notNull().default(0),
   },
   (table) => ({

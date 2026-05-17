@@ -379,6 +379,7 @@ export class ConfigRepository {
               ? toJson(Array.isArray(cfg.adapter) ? cfg.adapter : [cfg.adapter])
               : null,
           maxConcurrency: cfg.maxConcurrency ?? null,
+          displayName: cfg.display_name?.trim() || null,
           sortOrder: idx,
         }));
         if (modelRows.length > 0) {
@@ -452,6 +453,7 @@ export class ConfigRepository {
             ...(m.extraBody ? { extraBody: parseJson(m.extraBody) } : {}),
             ...(m.adapter ? { adapter: parseJson(m.adapter) } : {}),
             ...(m.maxConcurrency != null ? { maxConcurrency: m.maxConcurrency } : {}),
+            ...(m.displayName ? { display_name: m.displayName } : {}),
           };
         }
       } else {

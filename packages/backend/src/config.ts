@@ -72,6 +72,7 @@ const ModelProviderConfigSchema = z.object({
   access_via: z.array(z.string()).optional(),
   type: z.enum(['chat', 'responses', 'embeddings', 'transcriptions', 'speech', 'image']).optional(),
   extraBody: z.record(z.string(), z.any()).optional(),
+  display_name: z.string().optional(),
   adapter: AdapterConfigSchema,
   maxConcurrency: z.number().int().positive().nullable().optional(),
 });

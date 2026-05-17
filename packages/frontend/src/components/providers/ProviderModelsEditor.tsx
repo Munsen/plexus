@@ -279,6 +279,21 @@ export function ProviderModelsEditor({
                           </div>
                           <div className="flex flex-col gap-1">
                             <label className="font-body text-[11px] font-medium text-text-secondary">
+                              Model Name
+                            </label>
+                            <input
+                              className={FIELD_CLS}
+                              value={mCfg.display_name ?? ''}
+                              placeholder={mId}
+                              onChange={(e) =>
+                                updateModelConfig(mId, {
+                                  display_name: e.target.value || undefined,
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="font-body text-[11px] font-medium text-text-secondary">
                               Model Type
                             </label>
                             <select

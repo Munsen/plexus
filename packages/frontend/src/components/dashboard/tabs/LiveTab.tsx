@@ -106,6 +106,11 @@ import {
   type UsageRecord,
   type ConcurrencyData,
 } from '../../../lib/api';
+import {
+  normalizeLabel,
+  UsageRecordLabeler,
+  type EntityStats,
+} from '../../../lib/telemetry-labels';
 
 //
 // IMPORTS -- Formatting utilities
@@ -216,185 +221,6 @@ const POLL_INTERVAL_OPTIONS = [5000, 10000, 30000] as const;
 const MODEL_TIMELINE_MAX_SERIES = 5;
 /** Colour palette for the stacked model bars (cycles if more than 5 models) */
 const MODEL_TIMELINE_COLORS = ['#3b82f6', '#14b8a6', '#8b5cf6', '#f59e0b', '#ef4444'] as const;
-
-/**
- * Telemetry labels that are treated as "unset". Providers and models sometimes
- * report placeholder strings instead of null, so we normalise these away.
- */
-const PLACEHOLDER_LABELS = new Set(['unknown', 'n/a', 'na', 'none', 'null', 'undefined']);
-
-//
-// LABEL NORMALISATION HELPERS
-//
-
-/**
- * Strips whitespace and filters out placeholder telemetry labels.
- * Returns an empty string for any value that is null, undefined, blank,
- * or matches a known placeholder (e.g. "unknown", "n/a", "null").
- */
-const normalizeTelemetryLabel = (value: string | null | undefined): string => {
-  const normalized = value?.trim();
-  if (!normalized) {
-    return '';
-  }
-
-  if (PLACEHOLDER_LABELS.has(normalized.toLowerCase())) {
-    return '';
-  }
-
-  return normalized;
-};
-
-/**
- * Derives a display label for the provider of a request.
- * Falls back to "Failed Request" if the request errored before a provider was
- * resolved, or "Unresolved Provider" if the provider field is simply absent.
- */
-const getProviderLabel = (request: UsageRecord): string => {
-  const provider = normalizeTelemetryLabel(request.provider);
-  if (provider) {
-    return provider;
-  }
-
-  const status = (request.responseStatus || '').toLowerCase();
-  if (status && status !== 'success') {
-    return 'Failed Request';
-  }
-
-  return 'Unresolved Provider';
-};
-
-/**
- * Derives a display label for the model used in a request.
- * Prefers `selectedModelName` (the actual model dispatched to) over
- * `incomingModelAlias` (the alias the client requested). Falls back to
- * "Failed Before Model Selection" for errors, or "Unresolved Model" otherwise.
- */
-const getModelLabel = (request: UsageRecord): string => {
-  const model =
-    normalizeTelemetryLabel(request.selectedModelName) ||
-    normalizeTelemetryLabel(request.incomingModelAlias);
-  if (model) {
-    return model;
-  }
-
-  const status = (request.responseStatus || '').toLowerCase();
-  if (status && status !== 'success') {
-    return 'Failed Before Model Selection';
-  }
-
-  return 'Unresolved Model';
-};
-
-//
-// MODULE-LEVEL COMPONENTS AND HELPERS
-//
-
-/**
- * Aggregated statistics for a single entity (provider or model).
- * Used by the "stats" card and its expanded modal view.
- *
- * All averages (latency, TTFT, TPS) are arithmetic means computed from the
- * total running sum divided by the request count for that entity.
- */
-interface EntityStats {
-  /** Display name of the provider or model */
-  name: string;
-  /** Total number of requests routed to this entity in the live window */
-  requests: number;
-  /** Number of requests that did NOT have responseStatus === 'success' */
-  errors: number;
-  /** Percentage of successful requests: ((requests - errors) / requests) * 100 */
-  successRate: number;
-  /** Sum of all token types (input + output + cached + cache-write) */
-  tokens: number;
-  /** Cumulative cost in USD for all requests to this entity */
-  cost: number;
-  /** Mean end-to-end latency (ms) across all requests */
-  avgLatency: number;
-  /** Mean Time To First Token (ms) across all requests */
-  avgTtft: number;
-  /** Mean tokens-per-second throughput across all requests */
-  avgTps: number;
-}
-
-/**
- * Groups an array of usage records by a specified entity dimension (provider
- * or model), then computes aggregate statistics for each group.
- *
- * Algorithm:
- * 1. Iterate over all requests, resolving each to a string key via
- *    getProviderLabel or getModelLabel.
- * 2. Accumulate running totals in a Map<string, accumulators> -- using a Map
- *    rather than a plain object for O(1) key lookup and to avoid prototype
- *    pollution with arbitrary provider/model name strings.
- * 3. Convert the Map entries into EntityStats objects, computing averages by
- *    dividing cumulative sums by the request count.
- * 4. Sort descending by request count and return only the top 5.
- *
- * @param requests - The filtered array of live UsageRecords
- * @param entityType - Whether to group by 'provider' or 'model'
- * @returns Top 5 entities sorted by descending request count
- */
-const aggregateByEntity = (
-  requests: UsageRecord[],
-  entityType: 'provider' | 'model'
-): EntityStats[] => {
-  const grouped = new Map<
-    string,
-    {
-      requests: number;
-      errors: number;
-      tokens: number;
-      cost: number;
-      latency: number;
-      ttft: number;
-      tps: number;
-    }
-  >();
-
-  requests.forEach((request) => {
-    const key = entityType === 'provider' ? getProviderLabel(request) : getModelLabel(request);
-
-    const existing = grouped.get(key) || {
-      requests: 0,
-      errors: 0,
-      tokens: 0,
-      cost: 0,
-      latency: 0,
-      ttft: 0,
-      tps: 0,
-    };
-
-    existing.requests++;
-    if (request.responseStatus !== 'success') existing.errors++;
-    existing.tokens +=
-      (request.tokensInput || 0) +
-      (request.tokensOutput || 0) +
-      (request.tokensCached || 0) +
-      (request.tokensCacheWrite || 0);
-    existing.cost += request.costTotal || 0;
-    existing.latency += request.durationMs || 0;
-    existing.ttft += request.ttftMs || 0;
-    existing.tps += request.tokensPerSec || 0;
-    grouped.set(key, existing);
-  });
-
-  return Array.from(grouped.entries())
-    .map(([name, data]) => ({
-      name,
-      requests: data.requests,
-      errors: data.errors,
-      successRate: data.requests > 0 ? ((data.requests - data.errors) / data.requests) * 100 : 0,
-      tokens: data.tokens,
-      cost: data.cost,
-      avgLatency: data.requests > 0 ? data.latency / data.requests : 0,
-      avgTtft: data.requests > 0 ? data.ttft / data.requests : 0,
-      avgTps: data.requests > 0 ? data.tps / data.requests : 0,
-    }))
-    .sort((a, b) => b.requests - a.requests)
-    .slice(0, 5);
-};
 
 /**
  * Compact stat row for a single provider or model entity.
@@ -631,6 +457,8 @@ export const LiveTab: React.FC<LiveTabProps> = ({
   });
   /** Raw usage records from the latest poll -- the source of truth for all derived data */
   const [logs, setLogs] = useState<UsageRecord[]>([]);
+  /** Resolves display labels for provider/model fields in usage records */
+  const labeler = useMemo(() => new UsageRecordLabeler(), []);
 
   // ---------------------------------------------------------------------------
   // STATE -- UI / polling bookkeeping
@@ -1214,7 +1042,7 @@ export const LiveTab: React.FC<LiveTabProps> = ({
   const modelTimeline = useMemo(() => {
     const modelCounts = new Map<string, number>();
     for (const request of liveRequests) {
-      const model = getModelLabel(request);
+      const model = labeler.modelLabel(request);
       modelCounts.set(model, (modelCounts.get(model) || 0) + 1);
     }
 
@@ -1312,7 +1140,7 @@ export const LiveTab: React.FC<LiveTabProps> = ({
         Number(request.tokensCached || 0) +
         Number(request.tokensCacheWrite || 0);
 
-      const modelLabel = getModelLabel(request);
+      const modelLabel = labeler.modelLabel(request);
       const seriesKey = seriesKeyByLabel.get(modelLabel);
       if (seriesKey) {
         bucket[seriesKey] = Number(bucket[seriesKey] || 0) + 1;
@@ -1342,7 +1170,7 @@ export const LiveTab: React.FC<LiveTabProps> = ({
       seriesLabelMap: new Map(series.map((entry) => [entry.key, entry.label])),
       data,
     };
-  }, [liveRequests]);
+  }, [liveRequests, labeler]);
 
   // ---------------------------------------------------------------------------
   // COMPUTED SCALAR VALUES -- derived from summary and liveRequests
@@ -1410,7 +1238,7 @@ export const LiveTab: React.FC<LiveTabProps> = ({
     >();
 
     for (const request of liveRequests) {
-      const provider = getProviderLabel(request);
+      const provider = labeler.providerLabel(request);
       const row = providers.get(provider) || {
         requests: 0,
         success: 0,
@@ -1437,7 +1265,7 @@ export const LiveTab: React.FC<LiveTabProps> = ({
       }))
       .sort((a, b) => b.requests - a.requests)
       .slice(0, 6);
-  }, [liveRequests]);
+  }, [liveRequests, labeler]);
 
   /**
    * Computes minute-over-minute request rate deltas for the velocity chart.
@@ -1462,7 +1290,7 @@ export const LiveTab: React.FC<LiveTabProps> = ({
   const providerPulseRows = useMemo(() => {
     const rows = new Map<string, { requests: number; success: number }>();
     for (const request of liveRequests) {
-      const provider = getProviderLabel(request);
+      const provider = labeler.providerLabel(request);
       const row = rows.get(provider) || { requests: 0, success: 0 };
       row.requests += 1;
       if ((request.responseStatus || '').toLowerCase() === 'success') {
@@ -1479,13 +1307,13 @@ export const LiveTab: React.FC<LiveTabProps> = ({
       }))
       .sort((a, b) => b.requests - a.requests)
       .slice(0, 8);
-  }, [liveRequests]);
+  }, [liveRequests, labeler]);
 
   /** Top 8 models by request count with success rate -- for the model pulse bar chart */
   const modelPulseRows = useMemo(() => {
     const rows = new Map<string, { requests: number; success: number }>();
     for (const request of liveRequests) {
-      const model = getModelLabel(request);
+      const model = labeler.modelLabel(request);
       const row = rows.get(model) || { requests: 0, success: 0 };
       row.requests += 1;
       if ((request.responseStatus || '').toLowerCase() === 'success') {
@@ -1502,7 +1330,7 @@ export const LiveTab: React.FC<LiveTabProps> = ({
       }))
       .sort((a, b) => b.requests - a.requests)
       .slice(0, 8);
-  }, [liveRequests]);
+  }, [liveRequests, labeler]);
 
   /** Groups cooldowns by "provider:model" key so multiple cooldowns for the same pair are merged */
 
@@ -1521,10 +1349,16 @@ export const LiveTab: React.FC<LiveTabProps> = ({
   }, [cooldowns]);
 
   /** Aggregated stats for the top 5 providers -- used by the "stats" card */
-  const providerStats = useMemo(() => aggregateByEntity(liveRequests, 'provider'), [liveRequests]);
+  const providerStats = useMemo(
+    () => labeler.aggregateByEntity(liveRequests, 'provider'),
+    [liveRequests, labeler]
+  );
 
   /** Aggregated stats for the top 5 models -- used by the "stats" card */
-  const modelStats = useMemo(() => aggregateByEntity(liveRequests, 'model'), [liveRequests]);
+  const modelStats = useMemo(
+    () => labeler.aggregateByEntity(liveRequests, 'model'),
+    [liveRequests, labeler]
+  );
 
   const activeProviderCount = providerStats.filter((p) => p.requests > 0).length;
   const activeModelCount = modelStats.filter((m) => m.requests > 0).length;
@@ -1931,8 +1765,8 @@ export const LiveTab: React.FC<LiveTabProps> = ({
                   Math.floor((Date.now() - new Date(request.date).getTime()) / 1000)
                 );
                 const status = (request.responseStatus || 'errored').toLowerCase();
-                const providerLabel = getProviderLabel(request);
-                const modelLabel = getModelLabel(request);
+                const providerLabel = labeler.providerLabel(request);
+                const modelLabel = labeler.modelLabel(request);
                 return (
                   <div
                     key={request.requestId}
@@ -2251,7 +2085,7 @@ export const LiveTab: React.FC<LiveTabProps> = ({
                         return (
                           <CooldownRow
                             key={key}
-                            provider={normalizeTelemetryLabel(provider) || 'Unknown'}
+                            provider={normalizeLabel(provider) || 'Unknown'}
                             modelDisplay={model || 'all models'}
                             timeDisplay={timeDisplay}
                             consecutiveFailures={representative.consecutiveFailures}
@@ -2804,8 +2638,8 @@ export const LiveTab: React.FC<LiveTabProps> = ({
                         Math.floor((Date.now() - new Date(request.date).getTime()) / 1000)
                       );
                       const status = (request.responseStatus || 'errored').toLowerCase();
-                      const providerLabel = getProviderLabel(request);
-                      const modelLabel = getModelLabel(request);
+                      const providerLabel = labeler.providerLabel(request);
+                      const modelLabel = labeler.modelLabel(request);
 
                       return (
                         <div

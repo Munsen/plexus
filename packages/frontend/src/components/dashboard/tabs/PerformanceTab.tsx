@@ -3,6 +3,7 @@ import { BarChart3, Gauge, TimerReset, Trash2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts';
 import { api, type ProviderPerformanceData } from '../../../lib/api';
 import { formatMs, formatNumber } from '../../../lib/format';
+import { performanceModelLabel, performanceRowLabel } from '../../../lib/telemetry-labels';
 import { Card } from '../../ui/Card';
 import { Button } from '../../ui/Button';
 import { useToast } from '../../../contexts/ToastContext';
@@ -34,7 +35,7 @@ const PerformanceBarChart = ({
 
   const chartData = (reverse ? [...data] : data).map((row) => ({
     ...row,
-    label: row.target_model ? `${row.provider}/${row.target_model}` : row.provider,
+    label: performanceRowLabel(row),
   }));
   const metricLabel = metric === 'avg_tokens_per_sec' ? 'Avg throughput' : 'Avg TTFT';
 
@@ -108,7 +109,7 @@ const PerformanceBarChart = ({
             labelFormatter={(label, payload) => {
               const row = payload?.[0]?.payload;
               if (row?.target_model) {
-                return row.target_model;
+                return performanceModelLabel(row);
               }
               return label;
             }}
@@ -161,14 +162,20 @@ export const PerformanceTab = () => {
   }, []);
 
   const models = useMemo(() => {
-    const unique = Array.from(new Set(rows.map((r) => r.model).filter(Boolean)));
-    unique.sort((a, b) => a.localeCompare(b));
-    return unique;
+    const seen = new Map<string, string>();
+    for (const r of rows) {
+      if (r.model && !seen.has(r.model)) {
+        seen.set(r.model, performanceModelLabel(r));
+      }
+    }
+    const entries = Array.from(seen.entries());
+    entries.sort((a, b) => a[1].localeCompare(b[1]));
+    return entries;
   }, [rows]);
 
   useEffect(() => {
     if (!selectedModel && models.length > 0) {
-      setSelectedModel(models[0]!);
+      setSelectedModel(models[0]![0]!);
     }
   }, [models, selectedModel]);
 
@@ -211,9 +218,9 @@ export const PerformanceTab = () => {
             {models.length === 0 ? (
               <option value="">No models available</option>
             ) : (
-              models.map((model) => (
+              models.map(([model, displayName]) => (
                 <option key={model} value={model}>
-                  {model}
+                  {displayName}
                 </option>
               ))
             )}
@@ -254,7 +261,7 @@ export const PerformanceTab = () => {
           </div>
           <div className="mt-4 space-y-2">
             {fastestByTokens.slice(0, 5).map((row, index) => {
-              const label = row.target_model ? `${row.provider}/${row.target_model}` : row.provider;
+              const label = performanceRowLabel(row);
               return (
                 <div key={label} className="flex items-center justify-between text-sm">
                   <span className="text-text-secondary">
@@ -279,7 +286,7 @@ export const PerformanceTab = () => {
           </div>
           <div className="mt-4 space-y-2">
             {fastestByTtft.slice(0, 5).map((row, index) => {
-              const label = row.target_model ? `${row.provider}/${row.target_model}` : row.provider;
+              const label = performanceRowLabel(row);
               return (
                 <div key={label} className="flex items-center justify-between text-sm">
                   <span className="text-text-secondary">
@@ -299,14 +306,18 @@ export const PerformanceTab = () => {
         >
           <div className="space-y-3 text-sm">
             <div className="text-text-secondary">Model</div>
-            <div className="text-text font-medium break-all">{selectedModel || '—'}</div>
+            <div className="text-text font-medium break-all">
+              {selectedModel
+                ? models.find(([m]) => m === selectedModel)?.[1] || selectedModel
+                : '—'}
+            </div>
 
             <div className="pt-2 border-t border-border-glass text-text-secondary">
               Top throughput provider
             </div>
             <div className="text-text font-medium">
               {fastestByTokens[0]
-                ? `${fastestByTokens[0].target_model ? `${fastestByTokens[0].provider}/${fastestByTokens[0].target_model}` : fastestByTokens[0].provider} · ${formatNumber(fastestByTokens[0].avg_tokens_per_sec, 1)} tok/s`
+                ? `${performanceRowLabel(fastestByTokens[0])} · ${formatNumber(fastestByTokens[0].avg_tokens_per_sec, 1)} tok/s`
                 : '—'}
             </div>
 
@@ -315,7 +326,7 @@ export const PerformanceTab = () => {
             </div>
             <div className="text-text font-medium">
               {fastestByTtft[0]
-                ? `${fastestByTtft[0].target_model ? `${fastestByTtft[0].provider}/${fastestByTtft[0].target_model}` : fastestByTtft[0].provider} · ${formatMs(fastestByTtft[0].avg_ttft_ms)}`
+                ? `${performanceRowLabel(fastestByTtft[0])} · ${formatMs(fastestByTtft[0].avg_ttft_ms)}`
                 : '—'}
             </div>
           </div>

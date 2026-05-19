@@ -147,9 +147,15 @@ export class UsageStorageService extends EventEmitter {
             : 0
           : record.isDescriptorRequest;
 
-      // Prepare values for insert/update
+      // Prepare values for insert/update — strip non-persisted computed fields
+      const {
+        selectedModelDisplayName: _dn,
+        hasDebug: _hd,
+        hasError: _he,
+        ...persistable
+      } = record as any;
       const values = {
-        ...record,
+        ...persistable,
         isStreamed: isStreamedValue,
         isPassthrough: isPassthroughValue,
         parallelToolCallsEnabled: parallelToolCallsValue,
@@ -613,8 +619,17 @@ export class UsageStorageService extends EventEmitter {
           kwhUsed: schema.requestUsage.kwhUsed,
           hasDebug: sql<boolean>`EXISTS(SELECT 1 FROM ${schema.debugLogs} dl WHERE dl.request_id = request_usage.request_id)`,
           hasError: sql<boolean>`EXISTS(SELECT 1 FROM ${schema.inferenceErrors} ie WHERE ie.request_id = request_usage.request_id)`,
+          selectedModelDisplayName: schema.providerModels.displayName,
         })
         .from(schema.requestUsage)
+        .leftJoin(schema.providers, eq(schema.requestUsage.provider, schema.providers.slug))
+        .leftJoin(
+          schema.providerModels,
+          and(
+            eq(schema.providers.id, schema.providerModels.providerId),
+            eq(schema.requestUsage.selectedModelName, schema.providerModels.modelName)
+          )
+        )
         .where(whereClause)
         .orderBy(
           sortDir === 'asc' ? asc(sortColumn) : desc(sortColumn),
@@ -668,6 +683,7 @@ export class UsageStorageService extends EventEmitter {
         toolCallsCount: row.toolCallsCount,
         finishReason: row.finishReason,
         kwhUsed: row.kwhUsed,
+        selectedModelDisplayName: row.selectedModelDisplayName,
       }));
 
       const countResults = await db
@@ -895,6 +911,7 @@ export class UsageStorageService extends EventEmitter {
         provider: this.schema.providerPerformance.provider,
         model: this.schema.providerPerformance.model,
         targetModel: this.schema.providerPerformance.model,
+        modelDisplayName: this.schema.providerModels.displayName,
         avgTtftMs: sql<number>`AVG(${this.schema.providerPerformance.timeToFirstTokenMs})`,
         minTtftMs: sql<number>`MIN(${this.schema.providerPerformance.timeToFirstTokenMs})`,
         maxTtftMs: sql<number>`MAX(${this.schema.providerPerformance.timeToFirstTokenMs})`,
@@ -911,17 +928,29 @@ export class UsageStorageService extends EventEmitter {
       })
         .from(this.schema.providerPerformance)
         .leftJoin(
-          this.schema.requestUsage,
-          eq(this.schema.providerPerformance.requestId, this.schema.requestUsage.requestId)
+          this.schema.providers,
+          eq(this.schema.providerPerformance.provider, this.schema.providers.slug)
+        )
+        .leftJoin(
+          this.schema.providerModels,
+          and(
+            eq(this.schema.providers.id, this.schema.providerModels.providerId),
+            eq(this.schema.providerPerformance.model, this.schema.providerModels.modelName)
+          )
         )
         .where(whereClause)
-        .groupBy(this.schema.providerPerformance.provider, this.schema.providerPerformance.model)
+        .groupBy(
+          this.schema.providerPerformance.provider,
+          this.schema.providerPerformance.model,
+          this.schema.providerModels.displayName
+        )
         .orderBy(desc(sql`AVG(${this.schema.providerPerformance.tokensPerSec})`));
 
       const mappedRows = perfRows.map((row: any) => ({
         provider: row.provider,
         model: row.model,
         target_model: row.targetModel,
+        model_display_name: row.modelDisplayName,
         avg_ttft_ms: row.avgTtftMs ?? 0,
         min_ttft_ms: row.minTtftMs ?? 0,
         max_ttft_ms: row.maxTtftMs ?? 0,
@@ -959,6 +988,7 @@ export class UsageStorageService extends EventEmitter {
               provider: usageProvider.provider,
               model,
               target_model: model,
+              model_display_name: null,
               avg_ttft_ms: 0,
               min_ttft_ms: 0,
               max_ttft_ms: 0,

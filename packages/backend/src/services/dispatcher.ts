@@ -216,6 +216,7 @@ export class Dispatcher {
       provider: route.provider,
       selectedModelName: route.model,
       canonicalModelName: route.canonicalModel,
+      selectedModelDisplayName: route.modelConfig?.display_name || null,
     });
   }
 
@@ -1239,6 +1240,7 @@ export class Dispatcher {
       canonicalModel: finalRoute.canonicalModel,
       provider: finalRoute.provider,
       model: finalRoute.model,
+      selectedModelDisplayName: finalRoute.modelConfig?.display_name,
       // Preserve the response-declared API type (e.g. oauth) so downstream
       // stream transformation uses the correct transformer.
       apiType: responseApiType || apiType,
@@ -2613,6 +2615,7 @@ export class Dispatcher {
     response.plexus = {
       provider: route.provider,
       model: route.model,
+      selectedModelDisplayName: route.modelConfig?.display_name,
       apiType: targetApiType,
       pricing: route.modelConfig?.pricing,
       providerDiscount: route.config.discount,
@@ -2920,6 +2923,7 @@ export class Dispatcher {
           plexus: {
             provider: route.provider,
             model: route.model,
+            selectedModelDisplayName: route.modelConfig?.display_name,
             apiType: 'embeddings',
             pricing: route.modelConfig?.pricing,
             providerDiscount: route.config.discount,
@@ -3155,6 +3159,7 @@ export class Dispatcher {
         unifiedResponse.plexus = {
           provider: route.provider,
           model: route.model,
+          selectedModelDisplayName: route.modelConfig?.display_name,
           apiType: 'transcriptions',
           pricing: route.modelConfig?.pricing,
           providerDiscount: route.config.discount,
@@ -3422,6 +3427,7 @@ export class Dispatcher {
         unifiedResponse.plexus = {
           provider: route.provider,
           model: route.model,
+          selectedModelDisplayName: route.modelConfig?.display_name,
           apiType: 'speech',
           pricing: route.modelConfig?.pricing,
           providerDiscount: route.config.discount,
@@ -3646,6 +3652,7 @@ export class Dispatcher {
         unifiedResponse.plexus = {
           provider: route.provider,
           model: route.model,
+          selectedModelDisplayName: route.modelConfig?.display_name,
           apiType: 'images',
           pricing: route.modelConfig?.pricing,
           providerDiscount: route.config.discount,
@@ -3868,6 +3875,7 @@ export class Dispatcher {
         unifiedResponse.plexus = {
           provider: route.provider,
           model: route.model,
+          selectedModelDisplayName: route.modelConfig?.display_name,
           apiType: 'images',
           pricing: route.modelConfig?.pricing,
           providerDiscount: route.config.discount,

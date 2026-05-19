@@ -51,6 +51,7 @@ const USAGE_FIELDS = new Set([
   'finishReason',
   'hasDebug',
   'hasError',
+  'selectedModelDisplayName',
 ]);
 
 export async function registerUsageRoutes(

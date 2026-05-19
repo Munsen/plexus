@@ -54,4 +54,6 @@ export interface UsageRecord {
   // Provider-reported cost (from SSE `: cost` comments or response payload)
   // When present, costTotal/costInput/costOutput are overridden with actual values
   providerReportedCost?: number | null;
+  // Resolved at read-time via LEFT JOIN with provider_models, or in-memory via dispatcher
+  selectedModelDisplayName?: string | null;
 }

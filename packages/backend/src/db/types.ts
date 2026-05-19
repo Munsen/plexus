@@ -24,4 +24,5 @@ export type UsageRecord = Omit<RequestUsage, 'isStreamed' | 'isPassthrough'> & {
   isPassthrough: boolean;
   hasDebug?: boolean;
   hasError?: boolean;
+  selectedModelDisplayName?: string | null;
 };

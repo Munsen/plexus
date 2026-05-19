@@ -194,6 +194,7 @@ export interface ProviderPerformanceData {
   provider: string;
   model: string;
   target_model?: string;
+  model_display_name?: string | null;
   avg_ttft_ms: number;
   min_ttft_ms: number;
   max_ttft_ms: number;
@@ -488,6 +489,8 @@ export interface UsageRecord {
   kwhUsed?: number;
   // Provider-reported cost
   providerReportedCost?: number;
+  // Resolved display name from provider_models via LEFT JOIN or in-memory from dispatcher
+  selectedModelDisplayName?: string | null;
 }
 
 interface BackendResponse<T> {
@@ -1485,6 +1488,7 @@ export const api = {
         provider: String(row.provider ?? ''),
         model: String(row.model ?? ''),
         target_model: row.target_model ? String(row.target_model) : undefined,
+        model_display_name: row.model_display_name ? String(row.model_display_name) : null,
         avg_ttft_ms: toNumber(row.avg_ttft_ms),
         min_ttft_ms: toNumber(row.min_ttft_ms),
         max_ttft_ms: toNumber(row.max_ttft_ms),

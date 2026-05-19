@@ -173,6 +173,7 @@ export interface UnifiedChatResponse {
   plexus?: {
     provider?: string;
     model?: string;
+    selectedModelDisplayName?: string;
     apiType?: string;
     pricing?: any;
     providerDiscount?: number;

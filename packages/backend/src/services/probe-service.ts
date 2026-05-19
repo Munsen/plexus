@@ -237,6 +237,7 @@ export class ProbeService {
       usageRecord.provider = response.plexus?.provider;
       usageRecord.selectedModelName = response.plexus?.model;
       usageRecord.canonicalModelName = response.plexus?.canonicalModel;
+      usageRecord.selectedModelDisplayName = response.plexus?.selectedModelDisplayName || null;
       usageRecord.outgoingApiType = response.plexus?.apiType;
       usageRecord.durationMs = durationMs;
       usageRecord.responseStatus = 'success';
@@ -270,6 +271,7 @@ export class ProbeService {
         provider: usageRecord.provider,
         selectedModelName: usageRecord.selectedModelName,
         canonicalModelName: usageRecord.canonicalModelName,
+        selectedModelDisplayName: usageRecord.selectedModelDisplayName,
       });
 
       await this.usageStorage.saveRequest(usageRecord as UsageRecord);

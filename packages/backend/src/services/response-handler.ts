@@ -55,6 +55,7 @@ export async function handleResponse(
   usageRecord.selectedModelName = unifiedResponse.plexus?.model || unifiedResponse.model; // Fallback to unifiedResponse.model if plexus.model is missing
   usageRecord.provider = unifiedResponse.plexus?.provider || 'unknown';
   usageRecord.canonicalModelName = unifiedResponse.plexus?.canonicalModel || null;
+  usageRecord.selectedModelDisplayName = unifiedResponse.plexus?.selectedModelDisplayName || null;
 
   // Set provider info for debug logging filter
   if (usageRecord.provider) {
